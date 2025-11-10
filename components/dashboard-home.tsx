@@ -1,0 +1,383 @@
+
+"use client"
+
+import { useEffect, useState } from "react"
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { Badge } from "@/components/ui/badge"
+import { Button } from "@/components/ui/button"
+import {
+  RefreshCw,
+  CheckCircle,
+  XCircle,
+  Package,
+  Database,
+  Users,
+  Clock,
+  TrendingUp,
+  AlertTriangle,
+  FileKey
+} from "lucide-react"
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table"
+import { useRouter } from "next/navigation"
+
+interface DashboardStats {
+  totalContratos: number
+  contratosAtivos: number
+  totalLicencas: number
+  licencasEmUso: number
+  totalSincronizacoes: number
+  sincronizacoesSucesso: number
+  sincronizacoesFalha: number
+  ultimasSincronizacoes: any[]
+  tabelasStats: any[]
+}
+
+export default function DashboardHome() {
+  const router = useRouter()
+  const [stats, setStats] = useState<DashboardStats>({
+    totalContratos: 0,
+    contratosAtivos: 0,
+    totalLicencas: 0,
+    licencasEmUso: 0,
+    totalSincronizacoes: 0,
+    sincronizacoesSucesso: 0,
+    sincronizacoesFalha: 0,
+    ultimasSincronizacoes: [],
+    tabelasStats: []
+  })
+  const [loading, setLoading] = useState(true)
+  const [queueStatus, setQueueStatus] = useState<any>(null)
+
+  useEffect(() => {
+    loadDashboardData()
+    const interval = setInterval(loadDashboardData, 30000) // Atualizar a cada 30 segundos
+    return () => clearInterval(interval)
+  }, [])
+
+  const loadDashboardData = async () => {
+    try {
+      setLoading(true)
+
+      // Buscar contratos
+      const contratosRes = await fetch('/api/contratos')
+      const contratos = contratosRes.ok ? await contratosRes.json() : []
+
+      // Buscar logs de sincronização
+      const logsRes = await fetch('/api/sync/logs?limit=10')
+      const logsData = logsRes.ok ? await logsRes.json() : { logs: [], total: 0 }
+
+      // Buscar estatísticas gerais
+      const statsRes = await fetch('/api/sync/logs?action=stats')
+      const statsData = statsRes.ok ? await statsRes.json() : {
+        totalSincronizacoes: 0,
+        sucessos: 0,
+        falhas: 0,
+        porTabela: []
+      }
+
+      // Buscar status da fila
+      const queueRes = await fetch('/api/sync/queue')
+      const queueData = queueRes.ok ? await queueRes.json() : null
+
+      // Calcular licenças em uso
+      const usuariosFdvRes = await fetch('/api/usuarios-fdv')
+      const usuariosFdv = usuariosFdvRes.ok ? await usuariosFdvRes.json() : []
+
+      setStats({
+        totalContratos: contratos.length,
+        contratosAtivos: contratos.filter((c: any) => c.ATIVO).length,
+        totalLicencas: contratos.reduce((sum: number, c: any) => sum + (c.LICENCAS || 0), 0),
+        licencasEmUso: usuariosFdv.filter((u: any) => u.ATIVO).length,
+        totalSincronizacoes: statsData.totalSincronizacoes,
+        sincronizacoesSucesso: statsData.sucessos,
+        sincronizacoesFalha: statsData.falhas,
+        ultimasSincronizacoes: logsData.logs.slice(0, 10),
+        tabelasStats: statsData.porTabela
+      })
+
+      setQueueStatus(queueData)
+    } catch (error) {
+      console.error('Erro ao carregar dados do dashboard:', error)
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const formatarData = (dataStr: string) => {
+    if (!dataStr) return '-'
+    const data = new Date(dataStr)
+    return data.toLocaleString('pt-BR')
+  }
+
+  const formatarDuracao = (ms: number) => {
+    if (!ms) return '-'
+    if (ms < 1000) return `${ms}ms`
+    return `${(ms / 1000).toFixed(2)}s`
+  }
+
+  const taxaSucesso = stats.totalSincronizacoes > 0
+    ? ((stats.sincronizacoesSucesso / stats.totalSincronizacoes) * 100).toFixed(1)
+    : 0
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center h-96">
+        <RefreshCw className="w-8 h-8 animate-spin text-primary" />
+      </div>
+    )
+  }
+
+  return (
+    <div className="space-y-6 p-6">
+      {/* Header */}
+      <div className="flex justify-between items-center">
+        <div>
+          <h1 className="text-3xl font-bold tracking-tight">Dashboard de Sincronizações</h1>
+          <p className="text-muted-foreground mt-2">
+            Visão geral do sistema de sincronização Sankhya
+          </p>
+        </div>
+        <Button onClick={loadDashboardData} variant="outline" size="sm">
+          <RefreshCw className="w-4 h-4 mr-2" />
+          Atualizar
+        </Button>
+      </div>
+
+      {/* Cards de Métricas Principais */}
+      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">Contratos Ativos</CardTitle>
+            <Package className="h-4 w-4 text-muted-foreground" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold">{stats.contratosAtivos}</div>
+            <p className="text-xs text-muted-foreground">
+              {stats.totalContratos} total
+            </p>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">Licenças</CardTitle>
+            <FileKey className="h-4 w-4 text-muted-foreground" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold">{stats.licencasEmUso}/{stats.totalLicencas}</div>
+            <p className="text-xs text-muted-foreground">
+              {stats.totalLicencas - stats.licencasEmUso} disponíveis
+            </p>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">Taxa de Sucesso</CardTitle>
+            <TrendingUp className="h-4 w-4 text-muted-foreground" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold">{taxaSucesso}%</div>
+            <p className="text-xs text-muted-foreground">
+              {stats.sincronizacoesSucesso} sucessos
+            </p>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">Falhas</CardTitle>
+            <AlertTriangle className="h-4 w-4 text-muted-foreground" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold text-destructive">{stats.sincronizacoesFalha}</div>
+            <p className="text-xs text-muted-foreground">
+              Total de erros
+            </p>
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* Status da Fila */}
+      {queueStatus && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Clock className="w-5 h-5" />
+              Status da Fila de Sincronização
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="grid gap-4 md:grid-cols-3">
+              <div>
+                <p className="text-sm font-medium text-muted-foreground">Itens na Fila</p>
+                <p className="text-2xl font-bold">{queueStatus.queueLength}</p>
+              </div>
+              <div>
+                <p className="text-sm font-medium text-muted-foreground">Em Processamento</p>
+                <p className="text-2xl font-bold">{queueStatus.contractsInProcessing?.length || 0}</p>
+              </div>
+              <div>
+                <p className="text-sm font-medium text-muted-foreground">Status</p>
+                <Badge variant={queueStatus.isProcessing ? "default" : "secondary"}>
+                  {queueStatus.isProcessing ? "Processando" : "Aguardando"}
+                </Badge>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      <div className="grid gap-4 md:grid-cols-2">
+        {/* Estatísticas por Tabela */}
+        <Card>
+          <CardHeader>
+            <CardTitle>Sincronizações por Tabela</CardTitle>
+            <CardDescription>Desempenho por tipo de dados</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Tabela</TableHead>
+                  <TableHead className="text-center">Total</TableHead>
+                  <TableHead className="text-center">Sucesso</TableHead>
+                  <TableHead className="text-center">Falhas</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {stats.tabelasStats.slice(0, 8).map((tabela: any) => (
+                  <TableRow key={tabela.tabela}>
+                    <TableCell className="font-medium">{tabela.tabela}</TableCell>
+                    <TableCell className="text-center">{tabela.total}</TableCell>
+                    <TableCell className="text-center">
+                      <div className="flex items-center justify-center gap-1">
+                        <CheckCircle className="w-3 h-3 text-green-600" />
+                        <span className="text-green-600">{tabela.sucessos}</span>
+                      </div>
+                    </TableCell>
+                    <TableCell className="text-center">
+                      <div className="flex items-center justify-center gap-1">
+                        <XCircle className="w-3 h-3 text-red-600" />
+                        <span className="text-red-600">{tabela.falhas}</span>
+                      </div>
+                    </TableCell>
+                  </TableRow>
+                ))}
+                {stats.tabelasStats.length === 0 && (
+                  <TableRow>
+                    <TableCell colSpan={4} className="text-center text-muted-foreground">
+                      Nenhuma sincronização registrada
+                    </TableCell>
+                  </TableRow>
+                )}
+              </TableBody>
+            </Table>
+          </CardContent>
+        </Card>
+
+        {/* Últimas Sincronizações */}
+        <Card>
+          <CardHeader>
+            <CardTitle>Últimas Sincronizações</CardTitle>
+            <CardDescription>Histórico recente de operações</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Empresa</TableHead>
+                  <TableHead>Tabela</TableHead>
+                  <TableHead>Status</TableHead>
+                  <TableHead className="text-right">Duração</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {stats.ultimasSincronizacoes.map((log: any) => (
+                  <TableRow key={log.ID_LOG}>
+                    <TableCell className="font-medium">{log.EMPRESA}</TableCell>
+                    <TableCell className="text-sm">{log.TABELA}</TableCell>
+                    <TableCell>
+                      <Badge variant={log.STATUS === 'SUCESSO' ? 'default' : 'destructive'}>
+                        {log.STATUS}
+                      </Badge>
+                    </TableCell>
+                    <TableCell className="text-right text-sm">
+                      {formatarDuracao(log.DURACAO_MS)}
+                    </TableCell>
+                  </TableRow>
+                ))}
+                {stats.ultimasSincronizacoes.length === 0 && (
+                  <TableRow>
+                    <TableCell colSpan={4} className="text-center text-muted-foreground">
+                      Nenhuma sincronização registrada
+                    </TableCell>
+                  </TableRow>
+                )}
+              </TableBody>
+            </Table>
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* Ações Rápidas */}
+      <Card>
+        <CardHeader>
+          <CardTitle>Ações Rápidas</CardTitle>
+          <CardDescription>Navegue para as principais áreas do sistema</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="grid gap-3 md:grid-cols-3 lg:grid-cols-5">
+            <Button
+              variant="outline"
+              className="justify-start"
+              onClick={() => router.push('/dashboard/contratos')}
+            >
+              <Package className="w-4 h-4 mr-2" />
+              Contratos
+            </Button>
+            <Button
+              variant="outline"
+              className="justify-start"
+              onClick={() => router.push('/dashboard/logs-sincronizacao')}
+            >
+              <Database className="w-4 h-4 mr-2" />
+              Logs
+            </Button>
+            <Button
+              variant="outline"
+              className="justify-start"
+              onClick={() => router.push('/dashboard/sincronizacao')}
+            >
+              <RefreshCw className="w-4 h-4 mr-2" />
+              Parceiros
+            </Button>
+            <Button
+              variant="outline"
+              className="justify-start"
+              onClick={() => router.push('/dashboard/sincronizacao-produtos')}
+            >
+              <Package className="w-4 h-4 mr-2" />
+              Produtos
+            </Button>
+            <Button
+              variant="outline"
+              className="justify-start"
+              onClick={() => router.push('/dashboard/usuarios-fdv')}
+            >
+              <Users className="w-4 h-4 mr-2" />
+              Usuários FDV
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
+    </div>
+  )
+}
